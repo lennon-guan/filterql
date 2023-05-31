@@ -48,6 +48,14 @@ func (a *Compare[T]) PrintTo(level int, out io.Writer) {
 	fmt.Fprintf(out, "%s)\n", indent)
 }
 
+func (a *CompareWithCall) PrintTo(level int, out io.Writer) {
+	indent := strings.Repeat("  ", level)
+	fmt.Fprintf(out, "%sCompare(%s) (\n", indent, tokenName(a.Op))
+	a.Left.PrintTo(level+1, out)
+	a.Right.PrintTo(level+1, out)
+	fmt.Fprintf(out, "%s)\n", indent)
+}
+
 func (a *In[T]) PrintTo(level int, out io.Writer) {
 	indent := strings.Repeat("  ", level)
 	fmt.Fprintf(out, "%sIn (\n", indent)
@@ -55,5 +63,13 @@ func (a *In[T]) PrintTo(level int, out io.Writer) {
 	for _, choice := range a.Choices {
 		fmt.Fprintf(out, "%s  %#v\n", indent, choice)
 	}
+	fmt.Fprintf(out, "%s)\n", indent)
+}
+
+func (a *InWithCall) PrintTo(level int, out io.Writer) {
+	indent := strings.Repeat("  ", level)
+	fmt.Fprintf(out, "%sIn (\n", indent)
+	a.Left.PrintTo(level+1, out)
+	a.Right.PrintTo(level+1, out)
 	fmt.Fprintf(out, "%s)\n", indent)
 }

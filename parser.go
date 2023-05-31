@@ -107,20 +107,31 @@ func parseAtom(ts *TokenStream) (BoolAst, error) {
 	op := ts.Current.Type
 	switch op {
 	case TOKEN_OP_EQ, TOKEN_OP_NE, TOKEN_OP_GT, TOKEN_OP_GE, TOKEN_OP_LT, TOKEN_OP_LE:
-		if typ, err := nextMustBe(ts, TOKEN_STR, TOKEN_INT); err != nil {
+		if typ, err := nextMustBe(ts, TOKEN_STR, TOKEN_INT, TOKEN_ID); err != nil {
 			return nil, err
 		} else {
-			defer ts.Next()
 			if typ == TOKEN_INT {
+				defer ts.Next()
 				return &Compare[int]{Call: call, Op: op, Target: tokenToInt(ts.Current.Text)}, nil
 			} else if typ == TOKEN_STR {
+				defer ts.Next()
 				return &Compare[string]{Call: call, Op: op, Target: tokenToStr(ts.Current.Text)}, nil
+			} else if call2, err := parseCall(ts); err != nil {
+				return nil, err
+			} else {
+				return &CompareWithCall{Left: call, Op: op, Right: call2}, nil
 			}
 		}
 		return nil, parseError(ErrUnexpectedToken, ts.index)
 	case TOKEN_OP_IN:
-		if _, err := nextMustBe(ts, TOKEN_LEFT_BRACKET); err != nil {
+		if typ, err := nextMustBe(ts, TOKEN_LEFT_BRACKET, TOKEN_ID); err != nil {
 			return nil, err
+		} else if typ == TOKEN_ID {
+			if call2, err := parseCall(ts); err != nil {
+				return nil, err
+			} else {
+				return &InWithCall{Left: call, Right: call2}, nil
+			}
 		}
 		choiceType, err := nextMustBe(ts, TOKEN_INT, TOKEN_STR)
 		if err != nil {

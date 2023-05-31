@@ -96,6 +96,25 @@ func (c *Call) IsTrue(ctx *Context) (bool, error) {
 	}
 }
 
+func compareByOp[T int | string](a, b T, op int) bool {
+	switch op {
+	case TOKEN_OP_EQ:
+		return a == b
+	case TOKEN_OP_NE:
+		return a != b
+	case TOKEN_OP_LT:
+		return a < b
+	case TOKEN_OP_LE:
+		return a <= b
+	case TOKEN_OP_GT:
+		return a > b
+	case TOKEN_OP_GE:
+		return a >= b
+	default:
+		panic("invalid compare op")
+	}
+}
+
 type Compare[T int | string] struct {
 	Call   *Call
 	Op     int
@@ -109,22 +128,7 @@ func (c *Compare[T]) IsTrue(ctx *Context) (bool, error) {
 	if result, is := ctx.result.(T); !is {
 		return false, ErrTypeNotMatched
 	} else {
-		switch c.Op {
-		case TOKEN_OP_EQ:
-			return result == c.Target, nil
-		case TOKEN_OP_NE:
-			return result != c.Target, nil
-		case TOKEN_OP_LT:
-			return result < c.Target, nil
-		case TOKEN_OP_LE:
-			return result <= c.Target, nil
-		case TOKEN_OP_GT:
-			return result > c.Target, nil
-		case TOKEN_OP_GE:
-			return result >= c.Target, nil
-		default:
-			panic("invalid compare op")
-		}
+		return compareByOp(result, c.Target, c.Op), nil
 	}
 }
 
@@ -153,6 +157,15 @@ func (c *Compare[T]) Not() *Compare[T] {
 	}
 }
 
+func inSlice[T int | string](val T, slice []T) bool {
+	for _, item := range slice {
+		if val == item {
+			return true
+		}
+	}
+	return false
+}
+
 type In[T int | string] struct {
 	Call    *Call
 	Choices []T
@@ -165,11 +178,59 @@ func (c *In[T]) IsTrue(ctx *Context) (bool, error) {
 	if result, is := ctx.result.(T); !is {
 		return false, ErrTypeNotMatched
 	} else {
-		for _, choice := range c.Choices {
-			if result == choice {
-				return true, nil
-			}
+		return inSlice(result, c.Choices), nil
+	}
+}
+
+type CompareWithCall struct {
+	Left, Right *Call
+	Op          int
+}
+
+func (c *CompareWithCall) IsTrue(ctx *Context) (bool, error) {
+	if err := c.Left.Eval(ctx); err != nil {
+		return false, err
+	}
+	res1 := ctx.result
+	if err := c.Right.Eval(ctx); err != nil {
+		return false, err
+	}
+	res2 := ctx.result
+	switch v1 := res1.(type) {
+	case int:
+		if v2, is := res2.(int); is {
+			return compareByOp(v1, v2, c.Op), nil
+		}
+	case string:
+		if v2, is := res2.(string); is {
+			return compareByOp(v1, v2, c.Op), nil
 		}
 	}
-	return false, nil
+	return false, ErrTypeNotMatched
+}
+
+type InWithCall struct {
+	Left, Right *Call
+}
+
+func (c *InWithCall) IsTrue(ctx *Context) (bool, error) {
+	if err := c.Left.Eval(ctx); err != nil {
+		return false, err
+	}
+	res1 := ctx.result
+	if err := c.Right.Eval(ctx); err != nil {
+		return false, err
+	}
+	res2 := ctx.result
+	switch v1 := res1.(type) {
+	case int:
+		if v2, is := res2.([]int); is {
+			return inSlice(v1, v2), nil
+		}
+	case string:
+		if v2, is := res2.([]string); is {
+			return inSlice(v1, v2), nil
+		}
+	}
+	return false, ErrTypeNotMatched
 }

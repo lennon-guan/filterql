@@ -76,6 +76,10 @@ type TokenInfo struct {
 	Offset int
 }
 
+func (ti TokenInfo) String() string {
+	return fmt.Sprintf("[%s:%s@%d]", tokenName(ti.Type), string(ti.Text), ti.Offset)
+}
+
 type TokenStream struct {
 	Current TokenInfo
 	chars   []rune

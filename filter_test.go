@@ -1,7 +1,9 @@
 package filterql_test
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -30,6 +32,25 @@ var (
 		"rec": func(env any, field string) (any, error) {
 			return reflect.ValueOf(env).Elem().FieldByName(field).Interface(), nil
 		},
+		"arg": func(env any, field string) (any, error) {
+			switch field {
+			case "uid":
+				return 5, nil
+			case "sources":
+				return []int{1, 3}, nil
+			default:
+				return nil, errors.New("unknown arg " + field)
+			}
+		},
+		"env": func(env any, field string) (any, error) {
+			switch field {
+			case "ksa":
+				rec := env.(*Record)
+				return rec.Source == 1 || rec.Source == 3, nil
+			default:
+				return nil, errors.New("unknown env key " + field)
+			}
+		},
 	}
 )
 
@@ -45,11 +66,22 @@ func joinInts(ints []int) string {
 }
 
 func testFilter(t *testing.T, query string, expectedIds ...int) {
+	testAstAndFilter(t, query, false, expectedIds...)
+}
+
+func testAstAndFilter(t *testing.T, query string, showAst bool, expectedIds ...int) {
 	t.Logf("query: %s", query)
 	cond, err := fql.Parse(query)
 	if err != nil {
+		if pe, is := err.(*fql.ParseError); is {
+			q := []rune(query)
+			query = string(q[:pe.Pos]) + fmt.Sprintf("\033[1;37;41m%c\033[0m", q[pe.Pos]) + string(q[pe.Pos+1:])
+		}
 		t.Errorf("parse query [%s] error %+v", query, err)
 		return
+	}
+	if showAst {
+		cond.PrintTo(0, os.Stdout)
 	}
 	ids := []int{}
 	ctx := fql.NewContextWithMethods(nil, nil, strMethods)
@@ -122,4 +154,16 @@ func TestIn(t *testing.T) {
 
 func TestNotIn(t *testing.T) {
 	testFilter(t, "not rec('Name') in ('Egg', 'Fig')", 1, 2, 3, 4, 7)
+}
+
+func TestCompareWithCall(t *testing.T) {
+	testFilter(t, "rec('ID') = arg('uid')", 5)
+}
+
+func TestInWithCall(t *testing.T) {
+	testFilter(t, "rec('Source') in arg('sources')", 1, 2, 3, 6)
+}
+
+func TestCallResultCheck(t *testing.T) {
+	testFilter(t, "env('ksa')", 1, 2, 3, 6)
 }
