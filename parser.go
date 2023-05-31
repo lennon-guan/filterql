@@ -15,16 +15,6 @@ func parseError(err error, pos int) *ParseError {
 	return &ParseError{Err: err, Pos: pos}
 }
 
-type ParseConfig struct {
-	StrMethods map[string]func(any, string) (any, error)
-	IntMethods map[string]func(any, int) (any, error)
-}
-
-var defaultConfig = ParseConfig{
-	StrMethods: map[string]func(any, string) (any, error){},
-	IntMethods: map[string]func(any, int) (any, error){},
-}
-
 func Parse(code string, cfg *ParseConfig) (BoolAst, error) {
 	if cfg == nil {
 		cfg = &defaultConfig

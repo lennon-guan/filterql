@@ -31,6 +31,43 @@ var (
 	cfg = &fql.ParseConfig{
 		StrMethods: map[string]func(any, string) (any, error){
 			"rec": func(env any, field string) (any, error) {
+				rec := env.(*Record)
+				switch field {
+				case "ID":
+					return rec.ID, nil
+				case "Name":
+					return rec.Name, nil
+				case "Source":
+					return rec.Source, nil
+				case "Level":
+					return rec.Level, nil
+				}
+				return reflect.ValueOf(env).Elem().FieldByName(field).Interface(), nil
+			},
+			"arg": func(env any, field string) (any, error) {
+				switch field {
+				case "uid":
+					return 5, nil
+				case "sources":
+					return []int{1, 3}, nil
+				default:
+					return nil, errors.New("unknown arg " + field)
+				}
+			},
+			"env": func(env any, field string) (any, error) {
+				switch field {
+				case "one_or_three":
+					rec := env.(*Record)
+					return rec.Source == 1 || rec.Source == 3, nil
+				default:
+					return nil, errors.New("unknown env key " + field)
+				}
+			},
+		},
+	}
+	cfg2 = &fql.ParseConfig{
+		StrMethods: map[string]func(any, string) (any, error){
+			"rec": func(env any, field string) (any, error) {
 				return reflect.ValueOf(env).Elem().FieldByName(field).Interface(), nil
 			},
 			"arg": func(env any, field string) (any, error) {
@@ -174,14 +211,44 @@ func TestNotCallResultCheck(t *testing.T) {
 	testFilter(t, "not env('one_or_three')", 4, 5, 7)
 }
 
-func BenchmarkEqual(b *testing.B) {
-	cond, _ := fql.Parse("rec('ID') = 5", cfg)
+func BenchmarkCommonQueryGetFieldBySwitch(b *testing.B) {
+	cond, _ := fql.Parse("rec('Source') = 1 and not (rec('ID') = 3 or rec('ID') = 5)", cfg)
 	ctx := fql.NewContext(nil)
+	n := len(records)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		for j := range records {
-			ctx.Env = &records[j]
+		for j := 0; j < 100; j++ {
+			ctx.Env = &records[j%n]
 			cond.IsTrue(ctx)
+		}
+	}
+}
+
+func BenchmarkCommonQueryGetFieldByReflect(b *testing.B) {
+	cond, _ := fql.Parse("rec('Source') = 1 and not (rec('ID') = 3 or rec('ID') = 5)", cfg2)
+	ctx := fql.NewContext(nil)
+	n := len(records)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < 100; j++ {
+			ctx.Env = &records[j%n]
+			cond.IsTrue(ctx)
+		}
+	}
+}
+
+func BenchmarkCommonQueryGetFieldByGoCode(b *testing.B) {
+	filterFunc := func(ctx *fql.Context) bool {
+		rec := ctx.Env.(*Record)
+		return rec.Source == 1 && !(rec.ID == 3 || rec.ID == 5)
+	}
+	ctx := fql.NewContext(nil)
+	n := len(records)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < 100; j++ {
+			ctx.Env = &records[j%n]
+			filterFunc(ctx)
 		}
 	}
 }

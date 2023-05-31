@@ -5,6 +5,9 @@ import (
 	"reflect"
 )
 
+type TArg interface {
+	int | string
+}
 type PrintableAst interface {
 	PrintTo(level int, out io.Writer)
 }
@@ -93,33 +96,20 @@ func (a *NOT) Not() BoolAst {
 	return a.Child
 }
 
-type callBinding[T int | string] struct {
-	fn  func(any, T) (any, error)
-	arg T
-}
-
-func (binding *callBinding[T]) getResult(ctx *Context) (any, error) {
-	return binding.fn(ctx.Env, binding.arg)
-}
-
-type callable interface {
-	getResult(ctx *Context) (any, error)
-}
-
 type Call interface {
 	BoolAst
 	EvalAst
 	CanNot
 }
 
-type call[T int | string] struct {
+type call[T TArg] struct {
 	name string
 	arg  T
 	fn   func(any, T) (any, error)
 	not  bool
 }
 
-func newCall[T int | string](fnMap map[string]func(any, T) (any, error), name string, arg T) (*call[T], error) {
+func newCall[T TArg](fnMap map[string]func(any, T) (any, error), name string, arg T) (*call[T], error) {
 	fn, has := fnMap[name]
 	if !has {
 		return nil, ErrNoSuchMethod
@@ -161,7 +151,7 @@ func (c *call[T]) Not() BoolAst {
 	}
 }
 
-func compareByOp[T int | string](a, b T, op int) bool {
+func compareByOp[T TArg](a, b T, op int) bool {
 	switch op {
 	case TOKEN_OP_EQ:
 		return a == b
@@ -180,7 +170,7 @@ func compareByOp[T int | string](a, b T, op int) bool {
 	}
 }
 
-type Compare[T int | string] struct {
+type Compare[T TArg] struct {
 	Call   Call
 	Op     int
 	Target T
@@ -222,7 +212,7 @@ func (c *Compare[T]) Not() BoolAst {
 	}
 }
 
-func inSlice[T int | string](val T, slice []T) bool {
+func inSlice[T TArg](val T, slice []T) bool {
 	for _, item := range slice {
 		if val == item {
 			return true
@@ -231,7 +221,7 @@ func inSlice[T int | string](val T, slice []T) bool {
 	return false
 }
 
-type In[T int | string] struct {
+type In[T TArg] struct {
 	Call    Call
 	NotIn   bool
 	Choices []T
