@@ -44,7 +44,7 @@ var (
 		},
 		"env": func(env any, field string) (any, error) {
 			switch field {
-			case "ksa":
+			case "one_or_three":
 				rec := env.(*Record)
 				return rec.Source == 1 || rec.Source == 3, nil
 			default:
@@ -165,5 +165,9 @@ func TestInWithCall(t *testing.T) {
 }
 
 func TestCallResultCheck(t *testing.T) {
-	testFilter(t, "env('ksa')", 1, 2, 3, 6)
+	testFilter(t, "env('one_or_three')", 1, 2, 3, 6)
+}
+
+func TestNotCallResultCheck(t *testing.T) {
+	testFilter(t, "not env('one_or_three')", 4, 5, 7)
 }

@@ -33,10 +33,14 @@ func (a *NOT) PrintTo(level int, out io.Writer) {
 
 func (a *Call) PrintTo(level int, out io.Writer) {
 	indent := strings.Repeat("  ", level)
+	prefix := ""
+	if a.not {
+		prefix = "!"
+	}
 	if a.ParamType == TOKEN_INT {
-		fmt.Fprintf(out, "%s%s(%d)\n", indent, a.Name, a.IntParam)
+		fmt.Fprintf(out, "%s%s%s(%d)\n", indent, prefix, a.Name, a.IntParam)
 	} else {
-		fmt.Fprintf(out, "%s%s(%#v)\n", indent, a.Name, a.StrParam)
+		fmt.Fprintf(out, "%s%s%s(%#v)\n", indent, prefix, a.Name, a.StrParam)
 	}
 }
 
@@ -58,7 +62,11 @@ func (a *CompareWithCall) PrintTo(level int, out io.Writer) {
 
 func (a *In[T]) PrintTo(level int, out io.Writer) {
 	indent := strings.Repeat("  ", level)
-	fmt.Fprintf(out, "%sIn (\n", indent)
+	if a.NotIn {
+		fmt.Fprintf(out, "%sNotIn (\n", indent)
+	} else {
+		fmt.Fprintf(out, "%sIn (\n", indent)
+	}
 	a.Call.PrintTo(level+1, out)
 	for _, choice := range a.Choices {
 		fmt.Fprintf(out, "%s  %#v\n", indent, choice)
@@ -68,7 +76,11 @@ func (a *In[T]) PrintTo(level int, out io.Writer) {
 
 func (a *InWithCall) PrintTo(level int, out io.Writer) {
 	indent := strings.Repeat("  ", level)
-	fmt.Fprintf(out, "%sIn (\n", indent)
+	if a.NotIn {
+		fmt.Fprintf(out, "%sNotIn (\n", indent)
+	} else {
+		fmt.Fprintf(out, "%sIn (\n", indent)
+	}
 	a.Left.PrintTo(level+1, out)
 	a.Right.PrintTo(level+1, out)
 	fmt.Fprintf(out, "%s)\n", indent)

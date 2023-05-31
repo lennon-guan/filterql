@@ -89,12 +89,7 @@ func parseAtom(ts *TokenStream) (BoolAst, error) {
 		atom, err := parseAtom(ts)
 		if err != nil {
 			return nil, err
-		}
-		if n, is := atom.(*NOT); is {
-			return n.Child, nil
-		} else if n, is := atom.(*Compare[int]); is {
-			return n.Not(), nil
-		} else if n, is := atom.(*Compare[string]); is {
+		} else if n, is := atom.(CanNot); is {
 			return n.Not(), nil
 		} else {
 			return &NOT{Child: atom}, nil
