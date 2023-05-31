@@ -1,0 +1,7 @@
+*.sw?
+.*.sw?
+.DS_Store
+bin
+pkg
+vendor
+

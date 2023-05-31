@@ -1,0 +1,201 @@
+package filterql
+
+import "fmt"
+
+type ParseError struct {
+	Err error
+	Pos int
+}
+
+func (e *ParseError) Error() string {
+	return fmt.Sprintf("%d: %+v", e.Pos, e.Err)
+}
+
+func parseError(err error, pos int) *ParseError {
+	return &ParseError{Err: err, Pos: pos}
+}
+
+func Parse(code string) (BoolAst, error) {
+	ts := NewTokenStream(code)
+	ts.Next()
+	return parseCondition(ts)
+}
+
+func parseCondition(ts *TokenStream) (BoolAst, error) {
+	children := make([]BoolAst, 1)
+	item, err := parseItem(ts)
+	if err != nil {
+		return nil, err
+	}
+	children[0] = item
+	for ts.Current.Type == TOKEN_OR {
+		if !ts.Next() {
+			return nil, parseError(ErrUnexpectedEnd, ts.index)
+		}
+		item, err := parseItem(ts)
+		if err != nil {
+			return nil, err
+		}
+		children = append(children, item)
+	}
+	if len(children) > 1 {
+		return &ORs{Children: children}, nil
+	} else {
+		return children[0], nil
+	}
+}
+
+func parseItem(ts *TokenStream) (BoolAst, error) {
+	var children []BoolAst
+	atom, err := parseAtom(ts)
+	if err != nil {
+		return nil, err
+	}
+	children = []BoolAst{atom}
+	for ts.Current.Type == TOKEN_AND {
+		if !ts.Next() {
+			return nil, parseError(ErrUnexpectedEnd, ts.index)
+		}
+		atom, err := parseAtom(ts)
+		if err != nil {
+			return nil, err
+		}
+		children = append(children, atom)
+	}
+	if len(children) > 1 {
+		return &ANDs{Children: children}, nil
+	} else {
+		return children[0], nil
+	}
+}
+
+func parseAtom(ts *TokenStream) (BoolAst, error) {
+	if ts.Current.Type == TOKEN_LEFT_BRACKET {
+		if !ts.Next() {
+			return nil, parseError(ErrUnexpectedEnd, ts.index)
+		}
+		if cond, err := parseCondition(ts); err != nil {
+			return nil, err
+		} else if ts.Current.Type != TOKEN_RIGHT_BRACKET {
+			return nil, parseError(ErrUnexpectedToken, ts.index)
+		} else {
+			ts.Next()
+			return cond, nil
+		}
+	} else if ts.Current.Type == TOKEN_NOT {
+		if !ts.Next() {
+			return nil, parseError(ErrUnexpectedEnd, ts.index)
+		}
+		atom, err := parseAtom(ts)
+		if err != nil {
+			return nil, err
+		}
+		if n, is := atom.(*NOT); is {
+			return n.Child, nil
+		} else if n, is := atom.(*Compare[int]); is {
+			return n.Not(), nil
+		} else if n, is := atom.(*Compare[string]); is {
+			return n.Not(), nil
+		} else {
+			return &NOT{Child: atom}, nil
+		}
+	}
+	call, err := parseCall(ts)
+	if err != nil {
+		return nil, err
+	}
+	op := ts.Current.Type
+	switch op {
+	case TOKEN_OP_EQ, TOKEN_OP_NE, TOKEN_OP_GT, TOKEN_OP_GE, TOKEN_OP_LT, TOKEN_OP_LE:
+		if typ, err := nextMustBe(ts, TOKEN_STR, TOKEN_INT); err != nil {
+			return nil, err
+		} else {
+			defer ts.Next()
+			if typ == TOKEN_INT {
+				return &Compare[int]{Call: call, Op: op, Target: tokenToInt(ts.Current.Text)}, nil
+			} else if typ == TOKEN_STR {
+				return &Compare[string]{Call: call, Op: op, Target: tokenToStr(ts.Current.Text)}, nil
+			}
+		}
+		return nil, parseError(ErrUnexpectedToken, ts.index)
+	case TOKEN_OP_IN:
+		if _, err := nextMustBe(ts, TOKEN_LEFT_BRACKET); err != nil {
+			return nil, err
+		}
+		choiceType, err := nextMustBe(ts, TOKEN_INT, TOKEN_STR)
+		if err != nil {
+			return nil, err
+		}
+		choices := [][]rune{ts.Current.Text}
+		for {
+			spType, err := nextMustBe(ts, TOKEN_COMMA, TOKEN_RIGHT_BRACKET)
+			if err != nil {
+				return nil, err
+			}
+			if spType == TOKEN_RIGHT_BRACKET {
+				break
+			}
+			if _, err := nextMustBe(ts, choiceType); err != nil {
+				return nil, err
+			}
+			choices = append(choices, ts.Current.Text)
+		}
+		ts.Next()
+		switch choiceType {
+		case TOKEN_INT:
+			in := &In[int]{Call: call, Choices: make([]int, len(choices))}
+			for i, choice := range choices {
+				in.Choices[i] = tokenToInt(choice)
+			}
+			return in, nil
+		case TOKEN_STR:
+			in := &In[string]{Call: call, Choices: make([]string, len(choices))}
+			for i, choice := range choices {
+				in.Choices[i] = tokenToStr(choice)
+			}
+			return in, nil
+		default:
+			panic("invalid choice type")
+		}
+	default:
+		return call, nil
+	}
+}
+
+func parseCall(ts *TokenStream) (*Call, error) {
+	if ts.Current.Type != TOKEN_ID {
+		return nil, parseError(ErrUnexpectedToken, ts.index)
+	}
+	call := &Call{Name: string(ts.Current.Text)}
+	if _, err := nextMustBe(ts, TOKEN_LEFT_BRACKET); err != nil {
+		return nil, err
+	}
+	if typ, err := nextMustBe(ts, TOKEN_STR, TOKEN_INT); err != nil {
+		return nil, err
+	} else {
+		call.ParamType = typ
+		switch typ {
+		case TOKEN_INT:
+			call.IntParam = tokenToInt(ts.Current.Text)
+		case TOKEN_STR:
+			call.StrParam = tokenToStr(ts.Current.Text)
+		}
+	}
+	if _, err := nextMustBe(ts, TOKEN_RIGHT_BRACKET); err != nil {
+		return nil, err
+	}
+	ts.Next()
+	return call, nil
+}
+
+func nextMustBe(ts *TokenStream, types ...int) (int, error) {
+	if !ts.Next() {
+		return TOKEN_NONE, parseError(ErrUnexpectedEnd, ts.index)
+	}
+	for _, t := range types {
+		if ts.Current.Type == t {
+			return t, nil
+		}
+	}
+	return TOKEN_NONE, parseError(ErrUnexpectedToken, ts.index)
+}

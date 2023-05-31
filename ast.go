@@ -1,0 +1,175 @@
+package filterql
+
+import (
+	"io"
+	"reflect"
+)
+
+type PrintableAst interface {
+	PrintTo(level int, out io.Writer)
+}
+
+type EvalAst interface {
+	PrintableAst
+	Eval(*Context) error
+}
+
+type BoolAst interface {
+	PrintableAst
+	IsTrue(*Context) (bool, error)
+}
+
+type ANDs struct {
+	Children []BoolAst
+}
+
+func (a *ANDs) IsTrue(ctx *Context) (bool, error) {
+	for _, child := range a.Children {
+		if rv, err := child.IsTrue(ctx); err != nil {
+			return false, err
+		} else if !rv {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+type ORs struct {
+	Children []BoolAst
+}
+
+func (a *ORs) IsTrue(ctx *Context) (bool, error) {
+	for _, child := range a.Children {
+		if rv, err := child.IsTrue(ctx); err != nil {
+			return false, err
+		} else if rv {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+type NOT struct {
+	Child BoolAst
+}
+
+func (a *NOT) IsTrue(ctx *Context) (bool, error) {
+	if r, err := a.Child.IsTrue(ctx); err != nil {
+		return false, err
+	} else {
+		return !r, nil
+	}
+}
+
+type Call struct {
+	Name      string
+	ParamType int
+	IntParam  int
+	StrParam  string
+}
+
+func (c *Call) Eval(ctx *Context) error {
+	var err error
+	if c.ParamType == TOKEN_INT {
+		ctx.result, err = ctx.invokeInt(c.Name, c.IntParam)
+	} else if c.ParamType == TOKEN_STR {
+		ctx.result, err = ctx.invokeStr(c.Name, c.StrParam)
+	} else {
+		panic("invalid param type")
+	}
+	return err
+}
+
+func (c *Call) IsTrue(ctx *Context) (bool, error) {
+	if err := c.Eval(ctx); err != nil {
+		return false, err
+	}
+	switch result := ctx.result.(type) {
+	case int:
+		return result != 0, nil
+	case string:
+		return result != "", nil
+	case bool:
+		return result, nil
+	default:
+		return reflect.ValueOf(result).IsZero(), nil
+	}
+}
+
+type Compare[T int | string] struct {
+	Call   *Call
+	Op     int
+	Target T
+}
+
+func (c *Compare[T]) IsTrue(ctx *Context) (bool, error) {
+	if err := c.Call.Eval(ctx); err != nil {
+		return false, err
+	}
+	if result, is := ctx.result.(T); !is {
+		return false, ErrTypeNotMatched
+	} else {
+		switch c.Op {
+		case TOKEN_OP_EQ:
+			return result == c.Target, nil
+		case TOKEN_OP_NE:
+			return result != c.Target, nil
+		case TOKEN_OP_LT:
+			return result < c.Target, nil
+		case TOKEN_OP_LE:
+			return result <= c.Target, nil
+		case TOKEN_OP_GT:
+			return result > c.Target, nil
+		case TOKEN_OP_GE:
+			return result >= c.Target, nil
+		default:
+			panic("invalid compare op")
+		}
+	}
+}
+
+func (c *Compare[T]) Not() *Compare[T] {
+	var op int
+	switch c.Op {
+	case TOKEN_OP_EQ:
+		op = TOKEN_OP_NE
+	case TOKEN_OP_NE:
+		op = TOKEN_OP_EQ
+	case TOKEN_OP_LT:
+		op = TOKEN_OP_GE
+	case TOKEN_OP_LE:
+		op = TOKEN_OP_GT
+	case TOKEN_OP_GT:
+		op = TOKEN_OP_LE
+	case TOKEN_OP_GE:
+		op = TOKEN_OP_LT
+	default:
+		panic("invalid compare op")
+	}
+	return &Compare[T]{
+		Call:   c.Call,
+		Op:     op,
+		Target: c.Target,
+	}
+}
+
+type In[T int | string] struct {
+	Call    *Call
+	Choices []T
+}
+
+func (c *In[T]) IsTrue(ctx *Context) (bool, error) {
+	if err := c.Call.Eval(ctx); err != nil {
+		return false, err
+	}
+	if result, is := ctx.result.(T); !is {
+		return false, ErrTypeNotMatched
+	} else {
+		for _, choice := range c.Choices {
+			if result == choice {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
