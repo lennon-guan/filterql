@@ -173,3 +173,15 @@ func TestCallResultCheck(t *testing.T) {
 func TestNotCallResultCheck(t *testing.T) {
 	testFilter(t, "not env('one_or_three')", 4, 5, 7)
 }
+
+func BenchmarkEqual(b *testing.B) {
+	cond, _ := fql.Parse("rec('ID') = 5", cfg)
+	ctx := fql.NewContext(nil)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for j := range records {
+			ctx.Env = &records[j]
+			cond.IsTrue(ctx)
+		}
+	}
+}
