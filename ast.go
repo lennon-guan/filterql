@@ -93,27 +93,50 @@ func (a *NOT) Not() BoolAst {
 	return a.Child
 }
 
-type Call struct {
-	Name      string
-	ParamType int
-	IntParam  int
-	StrParam  string
-	not       bool
+type callBinding[T int | string] struct {
+	fn  func(any, T) (any, error)
+	arg T
 }
 
-func (c *Call) Eval(ctx *Context) error {
-	var err error
-	if c.ParamType == TOKEN_INT {
-		ctx.result, err = ctx.invokeInt(c.Name, c.IntParam)
-	} else if c.ParamType == TOKEN_STR {
-		ctx.result, err = ctx.invokeStr(c.Name, c.StrParam)
-	} else {
-		panic("invalid param type")
+func (binding *callBinding[T]) getResult(ctx *Context) (any, error) {
+	return binding.fn(ctx.Env, binding.arg)
+}
+
+type callable interface {
+	getResult(ctx *Context) (any, error)
+}
+
+type Call interface {
+	BoolAst
+	EvalAst
+	CanNot
+}
+
+type call[T int | string] struct {
+	name string
+	arg  T
+	fn   func(any, T) (any, error)
+	not  bool
+}
+
+func newCall[T int | string](fnMap map[string]func(any, T) (any, error), name string, arg T) (*call[T], error) {
+	fn, has := fnMap[name]
+	if !has {
+		return nil, ErrNoSuchMethod
 	}
-	return err
+	return &call[T]{
+		name: name,
+		arg:  arg,
+		fn:   fn,
+	}, nil
 }
 
-func (c *Call) IsTrue(ctx *Context) (bool, error) {
+func (c *call[T]) Eval(ctx *Context) (err error) {
+	ctx.result, err = c.fn(ctx.Env, c.arg)
+	return
+}
+
+func (c *call[T]) IsTrue(ctx *Context) (bool, error) {
 	if err := c.Eval(ctx); err != nil {
 		return false, err
 	}
@@ -129,13 +152,12 @@ func (c *Call) IsTrue(ctx *Context) (bool, error) {
 	}
 }
 
-func (c *Call) Not() BoolAst {
-	return &Call{
-		Name:      c.Name,
-		ParamType: c.ParamType,
-		IntParam:  c.IntParam,
-		StrParam:  c.StrParam,
-		not:       !c.not,
+func (c *call[T]) Not() BoolAst {
+	return &call[T]{
+		name: c.name,
+		arg:  c.arg,
+		fn:   c.fn,
+		not:  !c.not,
 	}
 }
 
@@ -159,7 +181,7 @@ func compareByOp[T int | string](a, b T, op int) bool {
 }
 
 type Compare[T int | string] struct {
-	Call   *Call
+	Call   Call
 	Op     int
 	Target T
 }
@@ -210,7 +232,7 @@ func inSlice[T int | string](val T, slice []T) bool {
 }
 
 type In[T int | string] struct {
-	Call    *Call
+	Call    Call
 	NotIn   bool
 	Choices []T
 }
@@ -235,7 +257,7 @@ func (c *In[T]) Not() BoolAst {
 }
 
 type CompareWithCall struct {
-	Left, Right *Call
+	Left, Right Call
 	Op          int
 }
 
@@ -262,7 +284,7 @@ func (c *CompareWithCall) IsTrue(ctx *Context) (bool, error) {
 }
 
 type InWithCall struct {
-	Left, Right *Call
+	Left, Right Call
 	NotIn       bool
 }
 

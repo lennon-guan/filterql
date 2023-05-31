@@ -28,28 +28,30 @@ var (
 		{ID: 6, Name: "Fig", Source: 3, Level: 5},
 		{ID: 7, Name: "Grape", Source: 4, Level: 11},
 	}
-	strMethods = map[string]func(any, string) (any, error){
-		"rec": func(env any, field string) (any, error) {
-			return reflect.ValueOf(env).Elem().FieldByName(field).Interface(), nil
-		},
-		"arg": func(env any, field string) (any, error) {
-			switch field {
-			case "uid":
-				return 5, nil
-			case "sources":
-				return []int{1, 3}, nil
-			default:
-				return nil, errors.New("unknown arg " + field)
-			}
-		},
-		"env": func(env any, field string) (any, error) {
-			switch field {
-			case "one_or_three":
-				rec := env.(*Record)
-				return rec.Source == 1 || rec.Source == 3, nil
-			default:
-				return nil, errors.New("unknown env key " + field)
-			}
+	cfg = &fql.ParseConfig{
+		StrMethods: map[string]func(any, string) (any, error){
+			"rec": func(env any, field string) (any, error) {
+				return reflect.ValueOf(env).Elem().FieldByName(field).Interface(), nil
+			},
+			"arg": func(env any, field string) (any, error) {
+				switch field {
+				case "uid":
+					return 5, nil
+				case "sources":
+					return []int{1, 3}, nil
+				default:
+					return nil, errors.New("unknown arg " + field)
+				}
+			},
+			"env": func(env any, field string) (any, error) {
+				switch field {
+				case "one_or_three":
+					rec := env.(*Record)
+					return rec.Source == 1 || rec.Source == 3, nil
+				default:
+					return nil, errors.New("unknown env key " + field)
+				}
+			},
 		},
 	}
 )
@@ -71,7 +73,7 @@ func testFilter(t *testing.T, query string, expectedIds ...int) {
 
 func testAstAndFilter(t *testing.T, query string, showAst bool, expectedIds ...int) {
 	t.Logf("query: %s", query)
-	cond, err := fql.Parse(query)
+	cond, err := fql.Parse(query, cfg)
 	if err != nil {
 		if pe, is := err.(*fql.ParseError); is {
 			q := []rune(query)
@@ -84,7 +86,7 @@ func testAstAndFilter(t *testing.T, query string, showAst bool, expectedIds ...i
 		cond.PrintTo(0, os.Stdout)
 	}
 	ids := []int{}
-	ctx := fql.NewContextWithMethods(nil, nil, strMethods)
+	ctx := fql.NewContext(nil)
 	for i, rec := range records {
 		ctx.Env = &rec
 		if matched, err := cond.IsTrue(ctx); err != nil {

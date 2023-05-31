@@ -15,15 +15,28 @@ func parseError(err error, pos int) *ParseError {
 	return &ParseError{Err: err, Pos: pos}
 }
 
-func Parse(code string) (BoolAst, error) {
-	ts := NewTokenStream(code)
-	ts.Next()
-	return parseCondition(ts)
+type ParseConfig struct {
+	StrMethods map[string]func(any, string) (any, error)
+	IntMethods map[string]func(any, int) (any, error)
 }
 
-func parseCondition(ts *TokenStream) (BoolAst, error) {
+var defaultConfig = ParseConfig{
+	StrMethods: map[string]func(any, string) (any, error){},
+	IntMethods: map[string]func(any, int) (any, error){},
+}
+
+func Parse(code string, cfg *ParseConfig) (BoolAst, error) {
+	if cfg == nil {
+		cfg = &defaultConfig
+	}
+	ts := NewTokenStream(code)
+	ts.Next()
+	return parseCondition(ts, cfg)
+}
+
+func parseCondition(ts *TokenStream, cfg *ParseConfig) (BoolAst, error) {
 	children := make([]BoolAst, 1)
-	item, err := parseItem(ts)
+	item, err := parseItem(ts, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +45,7 @@ func parseCondition(ts *TokenStream) (BoolAst, error) {
 		if !ts.Next() {
 			return nil, parseError(ErrUnexpectedEnd, ts.index)
 		}
-		item, err := parseItem(ts)
+		item, err := parseItem(ts, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -45,9 +58,9 @@ func parseCondition(ts *TokenStream) (BoolAst, error) {
 	}
 }
 
-func parseItem(ts *TokenStream) (BoolAst, error) {
+func parseItem(ts *TokenStream, cfg *ParseConfig) (BoolAst, error) {
 	var children []BoolAst
-	atom, err := parseAtom(ts)
+	atom, err := parseAtom(ts, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +69,7 @@ func parseItem(ts *TokenStream) (BoolAst, error) {
 		if !ts.Next() {
 			return nil, parseError(ErrUnexpectedEnd, ts.index)
 		}
-		atom, err := parseAtom(ts)
+		atom, err := parseAtom(ts, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -69,12 +82,12 @@ func parseItem(ts *TokenStream) (BoolAst, error) {
 	}
 }
 
-func parseAtom(ts *TokenStream) (BoolAst, error) {
+func parseAtom(ts *TokenStream, cfg *ParseConfig) (BoolAst, error) {
 	if ts.Current.Type == TOKEN_LEFT_BRACKET {
 		if !ts.Next() {
 			return nil, parseError(ErrUnexpectedEnd, ts.index)
 		}
-		if cond, err := parseCondition(ts); err != nil {
+		if cond, err := parseCondition(ts, cfg); err != nil {
 			return nil, err
 		} else if ts.Current.Type != TOKEN_RIGHT_BRACKET {
 			return nil, parseError(ErrUnexpectedToken, ts.index)
@@ -86,7 +99,7 @@ func parseAtom(ts *TokenStream) (BoolAst, error) {
 		if !ts.Next() {
 			return nil, parseError(ErrUnexpectedEnd, ts.index)
 		}
-		atom, err := parseAtom(ts)
+		atom, err := parseAtom(ts, cfg)
 		if err != nil {
 			return nil, err
 		} else if n, is := atom.(CanNot); is {
@@ -95,7 +108,7 @@ func parseAtom(ts *TokenStream) (BoolAst, error) {
 			return &NOT{Child: atom}, nil
 		}
 	}
-	call, err := parseCall(ts)
+	call, err := parseCall(ts, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +124,7 @@ func parseAtom(ts *TokenStream) (BoolAst, error) {
 			} else if typ == TOKEN_STR {
 				defer ts.Next()
 				return &Compare[string]{Call: call, Op: op, Target: tokenToStr(ts.Current.Text)}, nil
-			} else if call2, err := parseCall(ts); err != nil {
+			} else if call2, err := parseCall(ts, cfg); err != nil {
 				return nil, err
 			} else {
 				return &CompareWithCall{Left: call, Op: op, Right: call2}, nil
@@ -122,7 +135,7 @@ func parseAtom(ts *TokenStream) (BoolAst, error) {
 		if typ, err := nextMustBe(ts, TOKEN_LEFT_BRACKET, TOKEN_ID); err != nil {
 			return nil, err
 		} else if typ == TOKEN_ID {
-			if call2, err := parseCall(ts); err != nil {
+			if call2, err := parseCall(ts, cfg); err != nil {
 				return nil, err
 			} else {
 				return &InWithCall{Left: call, Right: call2}, nil
@@ -168,23 +181,26 @@ func parseAtom(ts *TokenStream) (BoolAst, error) {
 	}
 }
 
-func parseCall(ts *TokenStream) (*Call, error) {
+func parseCall(ts *TokenStream, cfg *ParseConfig) (Call, error) {
 	if ts.Current.Type != TOKEN_ID {
 		return nil, parseError(ErrUnexpectedToken, ts.index)
 	}
-	call := &Call{Name: string(ts.Current.Text)}
+	name := string(ts.Current.Text)
 	if _, err := nextMustBe(ts, TOKEN_LEFT_BRACKET); err != nil {
 		return nil, err
 	}
+	var call Call
 	if typ, err := nextMustBe(ts, TOKEN_STR, TOKEN_INT); err != nil {
 		return nil, err
 	} else {
-		call.ParamType = typ
 		switch typ {
 		case TOKEN_INT:
-			call.IntParam = tokenToInt(ts.Current.Text)
+			call, err = newCall(cfg.IntMethods, name, tokenToInt(ts.Current.Text))
 		case TOKEN_STR:
-			call.StrParam = tokenToStr(ts.Current.Text)
+			call, err = newCall(cfg.StrMethods, name, tokenToStr(ts.Current.Text))
+		}
+		if err != nil {
+			return nil, err
 		}
 	}
 	if _, err := nextMustBe(ts, TOKEN_RIGHT_BRACKET); err != nil {
