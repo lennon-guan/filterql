@@ -170,6 +170,24 @@ func compareByOp[T TArg](a, b T, op int) bool {
 	}
 }
 
+func reverseOp(op int) int {
+	switch op {
+	case TOKEN_OP_EQ:
+		return TOKEN_OP_NE
+	case TOKEN_OP_NE:
+		return TOKEN_OP_EQ
+	case TOKEN_OP_LT:
+		return TOKEN_OP_GE
+	case TOKEN_OP_LE:
+		return TOKEN_OP_GT
+	case TOKEN_OP_GT:
+		return TOKEN_OP_LE
+	case TOKEN_OP_GE:
+		return TOKEN_OP_LT
+	}
+	panic("invalid compare op")
+}
+
 type Compare[T TArg] struct {
 	Call   Call
 	Op     int
@@ -188,26 +206,9 @@ func (c *Compare[T]) IsTrue(ctx *Context) (bool, error) {
 }
 
 func (c *Compare[T]) Not() BoolAst {
-	var op int
-	switch c.Op {
-	case TOKEN_OP_EQ:
-		op = TOKEN_OP_NE
-	case TOKEN_OP_NE:
-		op = TOKEN_OP_EQ
-	case TOKEN_OP_LT:
-		op = TOKEN_OP_GE
-	case TOKEN_OP_LE:
-		op = TOKEN_OP_GT
-	case TOKEN_OP_GT:
-		op = TOKEN_OP_LE
-	case TOKEN_OP_GE:
-		op = TOKEN_OP_LT
-	default:
-		panic("invalid compare op")
-	}
 	return &Compare[T]{
 		Call:   c.Call,
-		Op:     op,
+		Op:     reverseOp(c.Op),
 		Target: c.Target,
 	}
 }
@@ -273,6 +274,14 @@ func (c *CompareWithCall) IsTrue(ctx *Context) (bool, error) {
 	return false, ErrTypeNotMatched
 }
 
+func (c *CompareWithCall) Not() BoolAst {
+	return &CompareWithCall{
+		Left:  c.Left,
+		Right: c.Right,
+		Op:    reverseOp(c.Op),
+	}
+}
+
 type InWithCall struct {
 	Left, Right Call
 	NotIn       bool
@@ -305,5 +314,105 @@ func (c *InWithCall) Not() BoolAst {
 		Left:  c.Left,
 		Right: c.Right,
 		NotIn: !c.NotIn,
+	}
+}
+
+type callThenCompare[T1, T2 TArg] struct {
+	name   string
+	arg    T1
+	fn     func(any, T1) (any, error)
+	target T2
+	op     int
+}
+
+func newCallThenCompare[T TArg](ci Call, op int, target T) BoolAst {
+	switch c := ci.(type) {
+	case *call[int]:
+		return &callThenCompare[int, T]{
+			name:   c.name,
+			arg:    c.arg,
+			fn:     c.fn,
+			target: target,
+			op:     op,
+		}
+	case *call[string]:
+		return &callThenCompare[string, T]{
+			name:   c.name,
+			arg:    c.arg,
+			fn:     c.fn,
+			target: target,
+			op:     op,
+		}
+	}
+	panic("invalid call")
+}
+
+func (c *callThenCompare[T1, T2]) IsTrue(ctx *Context) (bool, error) {
+	ret, err := c.fn(ctx.Env, c.arg)
+	if err != nil {
+		return false, err
+	} else if result, is := ret.(T2); !is {
+		return false, ErrTypeNotMatched
+	} else {
+		return compareByOp(result, c.target, c.op), nil
+	}
+}
+
+func (c *callThenCompare[T1, T2]) Not() BoolAst {
+	return &callThenCompare[T1, T2]{
+		name:   c.name,
+		arg:    c.arg,
+		fn:     c.fn,
+		target: c.target,
+		op:     reverseOp(c.op),
+	}
+}
+
+type callThenIn[T1, T2 TArg] struct {
+	name    string
+	arg     T1
+	fn      func(any, T1) (any, error)
+	choices []T2
+	not     bool
+}
+
+func newCallThenIn[T TArg](ci Call, choices []T) BoolAst {
+	switch c := ci.(type) {
+	case *call[int]:
+		return &callThenIn[int, T]{
+			name:    c.name,
+			arg:     c.arg,
+			fn:      c.fn,
+			choices: choices,
+		}
+	case *call[string]:
+		return &callThenIn[string, T]{
+			name:    c.name,
+			arg:     c.arg,
+			fn:      c.fn,
+			choices: choices,
+		}
+	}
+	panic("invalid call")
+}
+
+func (c *callThenIn[T1, T2]) IsTrue(ctx *Context) (bool, error) {
+	ret, err := c.fn(ctx.Env, c.arg)
+	if err != nil {
+		return false, err
+	} else if result, is := ret.(T2); !is {
+		return false, ErrTypeNotMatched
+	} else {
+		return inSlice(result, c.choices) != c.not, nil
+	}
+}
+
+func (c *callThenIn[T1, T2]) Not() BoolAst {
+	return &callThenIn[T1, T2]{
+		name:    c.name,
+		arg:     c.arg,
+		fn:      c.fn,
+		choices: c.choices,
+		not:     !c.not,
 	}
 }

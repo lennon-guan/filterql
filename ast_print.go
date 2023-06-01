@@ -40,6 +40,14 @@ func (a *call[T]) PrintTo(level int, out io.Writer) {
 	fmt.Fprintf(out, "%s%s%s(%#v)\n", indent, prefix, a.name, a.arg)
 }
 
+func (a *callThenCompare[T1, T2]) PrintTo(level int, out io.Writer) {
+	indent := strings.Repeat("  ", level)
+	fmt.Fprintf(out, "%sCallThenCompare(%s) (\n", indent, tokenName(a.op))
+	fmt.Fprintf(out, "%s  %s(%#v)\n", indent, a.name, a.arg)
+	fmt.Fprintf(out, "%s  %#v\n", indent, a.target)
+	fmt.Fprintf(out, "%s)\n", indent)
+}
+
 func (a *Compare[T]) PrintTo(level int, out io.Writer) {
 	indent := strings.Repeat("  ", level)
 	fmt.Fprintf(out, "%sCompare(%s) (\n", indent, tokenName(a.Op))
@@ -79,5 +87,19 @@ func (a *InWithCall) PrintTo(level int, out io.Writer) {
 	}
 	a.Left.PrintTo(level+1, out)
 	a.Right.PrintTo(level+1, out)
+	fmt.Fprintf(out, "%s)\n", indent)
+}
+
+func (a *callThenIn[T1, T2]) PrintTo(level int, out io.Writer) {
+	indent := strings.Repeat("  ", level)
+	if a.not {
+		fmt.Fprintf(out, "%sCallThenNotIn (\n", indent)
+	} else {
+		fmt.Fprintf(out, "%sCallThenIn (\n", indent)
+	}
+	fmt.Fprintf(out, "%s  %s(%#v)\n", indent, a.name, a.arg)
+	for _, choice := range a.choices {
+		fmt.Fprintf(out, "%s  %#v\n", indent, choice)
+	}
 	fmt.Fprintf(out, "%s)\n", indent)
 }

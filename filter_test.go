@@ -114,7 +114,9 @@ func testAstAndFilter(t *testing.T, query string, showAst bool, expectedIds ...i
 	if err != nil {
 		if pe, is := err.(*fql.ParseError); is {
 			q := []rune(query)
-			query = string(q[:pe.Pos]) + fmt.Sprintf("\033[1;37;41m%c\033[0m", q[pe.Pos]) + string(q[pe.Pos+1:])
+			if pe.Pos < len(q) {
+				query = string(q[:pe.Pos]) + fmt.Sprintf("\033[1;37;41m%c\033[0m", q[pe.Pos]) + string(q[pe.Pos+1:])
+			}
 		}
 		t.Errorf("parse query [%s] error %+v", query, err)
 		return

@@ -110,10 +110,10 @@ func parseAtom(ts *TokenStream, cfg *ParseConfig) (BoolAst, error) {
 		} else {
 			if typ == TOKEN_INT {
 				defer ts.Next()
-				return &Compare[int]{Call: call, Op: op, Target: tokenToInt(ts.Current.Text)}, nil
+				return newCallThenCompare(call, op, tokenToInt(ts.Current.Text)), nil
 			} else if typ == TOKEN_STR {
 				defer ts.Next()
-				return &Compare[string]{Call: call, Op: op, Target: tokenToStr(ts.Current.Text)}, nil
+				return newCallThenCompare(call, op, tokenToStr(ts.Current.Text)), nil
 			} else if call2, err := parseCall(ts, cfg); err != nil {
 				return nil, err
 			} else {
@@ -156,13 +156,13 @@ func parseAtom(ts *TokenStream, cfg *ParseConfig) (BoolAst, error) {
 			for i, choice := range choices {
 				in.Choices[i] = tokenToInt(choice)
 			}
-			return in, nil
+			return newCallThenIn(in.Call, in.Choices), nil
 		case TOKEN_STR:
 			in := &In[string]{Call: call, Choices: make([]string, len(choices))}
 			for i, choice := range choices {
 				in.Choices[i] = tokenToStr(choice)
 			}
-			return in, nil
+			return newCallThenIn(in.Call, in.Choices), nil
 		default:
 			panic("invalid choice type")
 		}
