@@ -165,10 +165,12 @@ func TestAndNotOr(t *testing.T) {
 
 func TestIn(t *testing.T) {
 	testFilter(t, "rec('Name') in ('Egg', 'Fig')", 5, 6)
+	testFilter(t, "rec('Name') in ('Egg')", 5)
 }
 
 func TestNotIn(t *testing.T) {
 	testFilter(t, "not rec('Name') in ('Egg', 'Fig')", 1, 2, 3, 4, 7)
+	testFilter(t, "not rec('Name') in ('Egg')", 1, 2, 3, 4, 6, 7)
 }
 
 func TestCompareWithCall(t *testing.T) {
@@ -240,6 +242,32 @@ func BenchmarkParseWithLRUCache(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		if _, err := fql.Parse("rec('Source') = 1 and not (rec('ID') = 3 or rec('ID') = 5)", &conf); err != nil {
 			panic(err)
+		}
+	}
+}
+
+func BenchmarkFilterUsingEqual(b *testing.B) {
+	cond, _ := fql.Parse("rec('Source') = 1", cfg)
+	ctx := fql.NewContext(nil)
+	n := len(records)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < 100; j++ {
+			ctx.Env = &records[j%n]
+			cond.IsTrue(ctx)
+		}
+	}
+}
+
+func BenchmarkFilterUsingIn(b *testing.B) {
+	cond, _ := fql.Parse("rec('Source') in (1)", cfg)
+	ctx := fql.NewContext(nil)
+	n := len(records)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < 100; j++ {
+			ctx.Env = &records[j%n]
+			cond.IsTrue(ctx)
 		}
 	}
 }

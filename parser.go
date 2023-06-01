@@ -164,12 +164,18 @@ func parseAtom(ts *TokenStream, cfg *ParseConfig) (BoolAst, error) {
 		ts.Next()
 		switch choiceType {
 		case TOKEN_INT:
+			if len(choices) == 1 {
+				return newCallThenCompare(call, TOKEN_OP_EQ, tokenToInt(choices[0])), nil
+			}
 			in := &In[int]{Call: call, Choices: make([]int, len(choices))}
 			for i, choice := range choices {
 				in.Choices[i] = tokenToInt(choice)
 			}
 			return newCallThenIn(in.Call, in.Choices), nil
 		case TOKEN_STR:
+			if len(choices) == 1 {
+				return newCallThenCompare(call, TOKEN_OP_EQ, tokenToStr(choices[0])), nil
+			}
 			in := &In[string]{Call: call, Choices: make([]string, len(choices))}
 			for i, choice := range choices {
 				in.Choices[i] = tokenToStr(choice)
