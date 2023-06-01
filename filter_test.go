@@ -65,32 +65,6 @@ var (
 			},
 		},
 	}
-	cfg2 = &fql.ParseConfig{
-		StrMethods: map[string]func(any, string) (any, error){
-			"rec": func(env any, field string) (any, error) {
-				return reflect.ValueOf(env).Elem().FieldByName(field).Interface(), nil
-			},
-			"arg": func(env any, field string) (any, error) {
-				switch field {
-				case "uid":
-					return 5, nil
-				case "sources":
-					return []int{1, 3}, nil
-				default:
-					return nil, errors.New("unknown arg " + field)
-				}
-			},
-			"env": func(env any, field string) (any, error) {
-				switch field {
-				case "one_or_three":
-					rec := env.(*Record)
-					return rec.Source == 1 || rec.Source == 3, nil
-				default:
-					return nil, errors.New("unknown env key " + field)
-				}
-			},
-		},
-	}
 )
 
 func joinInts(ints []int) string {
@@ -213,7 +187,7 @@ func TestNotCallResultCheck(t *testing.T) {
 	testFilter(t, "not env('one_or_three')", 4, 5, 7)
 }
 
-func BenchmarkCommonQueryGetFieldBySwitch(b *testing.B) {
+func BenchmarkFilterGetFieldBySwitch(b *testing.B) {
 	cond, _ := fql.Parse("rec('Source') = 1 and not (rec('ID') = 3 or rec('ID') = 5)", cfg)
 	ctx := fql.NewContext(nil)
 	n := len(records)
@@ -226,20 +200,7 @@ func BenchmarkCommonQueryGetFieldBySwitch(b *testing.B) {
 	}
 }
 
-func BenchmarkCommonQueryGetFieldByReflect(b *testing.B) {
-	cond, _ := fql.Parse("rec('Source') = 1 and not (rec('ID') = 3 or rec('ID') = 5)", cfg2)
-	ctx := fql.NewContext(nil)
-	n := len(records)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		for j := 0; j < 100; j++ {
-			ctx.Env = &records[j%n]
-			cond.IsTrue(ctx)
-		}
-	}
-}
-
-func BenchmarkCommonQueryGetFieldByGoCode(b *testing.B) {
+func BenchmarkFilterGetFieldByGoCode(b *testing.B) {
 	filterFunc := func(ctx *fql.Context) bool {
 		rec := ctx.Env.(*Record)
 		return rec.Source == 1 && !(rec.ID == 3 || rec.ID == 5)
@@ -251,6 +212,34 @@ func BenchmarkCommonQueryGetFieldByGoCode(b *testing.B) {
 		for j := 0; j < 100; j++ {
 			ctx.Env = &records[j%n]
 			filterFunc(ctx)
+		}
+	}
+}
+
+func BenchmarkParseWithoutCache(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		if _, err := fql.Parse("rec('Source') = 1 and not (rec('ID') = 3 or rec('ID') = 5)", cfg); err != nil {
+			panic(err)
+		}
+	}
+}
+
+func BenchmarkParseWithMapCache(b *testing.B) {
+	conf := *cfg
+	conf.Cache = fql.NewMapCache()
+	for i := 0; i < b.N; i++ {
+		if _, err := fql.Parse("rec('Source') = 1 and not (rec('ID') = 3 or rec('ID') = 5)", &conf); err != nil {
+			panic(err)
+		}
+	}
+}
+
+func BenchmarkParseWithLRUCache(b *testing.B) {
+	conf := *cfg
+	conf.Cache = fql.NewLRUCache(10)
+	for i := 0; i < b.N; i++ {
+		if _, err := fql.Parse("rec('Source') = 1 and not (rec('ID') = 3 or rec('ID') = 5)", &conf); err != nil {
+			panic(err)
 		}
 	}
 }

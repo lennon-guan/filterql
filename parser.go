@@ -19,9 +19,21 @@ func Parse(code string, cfg *ParseConfig) (BoolAst, error) {
 	if cfg == nil {
 		cfg = &defaultConfig
 	}
+	if cacher := cfg.Cache; cacher != nil {
+		if cond, found := cacher.Load(code); found {
+			return cond, nil
+		}
+	}
 	ts := NewTokenStream(code)
 	ts.Next()
-	return parseCondition(ts, cfg)
+	if cond, err := parseCondition(ts, cfg); err != nil {
+		return nil, err
+	} else {
+		if cacher := cfg.Cache; cacher != nil {
+			cacher.Store(code, cond)
+		}
+		return cond, nil
+	}
 }
 
 func parseCondition(ts *TokenStream, cfg *ParseConfig) (BoolAst, error) {
