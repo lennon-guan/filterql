@@ -8,15 +8,11 @@ import (
 
 func main() {
 	cond, err := fql.Parse(os.Args[1], &fql.ParseConfig{
-		IntMethods: map[string]func(any, int) (any, error){
-			"intFunc": func(any, int) (any, error) {
-				return "", nil
-			},
+		DefaultIntMethod: func(string, any, int) (any, error) {
+			return 0, nil
 		},
-		StrMethods: map[string]func(any, string) (any, error){
-			"strFunc": func(any, string) (any, error) {
-				return "", nil
-			},
+		DefaultStrMethod: func(string, any, string) (any, error) {
+			return "", nil
 		},
 	})
 	if err != nil {

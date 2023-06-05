@@ -51,7 +51,14 @@ func parseCondition(ts *TokenStream, cfg *ParseConfig) (BoolAst, error) {
 		if err != nil {
 			return nil, err
 		}
-		children = append(children, item)
+		switch it := item.(type) {
+		case *ORs:
+			for _, child := range it.Children {
+				children = append(children, child)
+			}
+		default:
+			children = append(children, item)
+		}
 	}
 	if len(children) > 1 {
 		return &ORs{Children: children}, nil
@@ -75,7 +82,14 @@ func parseItem(ts *TokenStream, cfg *ParseConfig) (BoolAst, error) {
 		if err != nil {
 			return nil, err
 		}
-		children = append(children, atom)
+		switch it := atom.(type) {
+		case *ANDs:
+			for _, child := range it.Children {
+				children = append(children, child)
+			}
+		default:
+			children = append(children, atom)
+		}
 	}
 	if len(children) > 1 {
 		return &ANDs{Children: children}, nil
@@ -203,9 +217,9 @@ func parseCall(ts *TokenStream, cfg *ParseConfig) (Call, error) {
 	} else {
 		switch typ {
 		case TOKEN_INT:
-			call, err = newCall(cfg.IntMethods, name, tokenToInt(ts.Current.Text))
+			call, err = newCall(cfg.IntMethods, cfg.DefaultIntMethod, name, tokenToInt(ts.Current.Text))
 		case TOKEN_STR:
-			call, err = newCall(cfg.StrMethods, name, tokenToStr(ts.Current.Text))
+			call, err = newCall(cfg.StrMethods, cfg.DefaultStrMethod, name, tokenToStr(ts.Current.Text))
 		}
 		if err != nil {
 			return nil, err

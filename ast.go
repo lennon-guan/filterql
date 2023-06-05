@@ -17,13 +17,14 @@ type EvalAst interface {
 	Eval(*Context) error
 }
 
-type BoolAst interface {
-	PrintableAst
-	IsTrue(*Context) (bool, error)
-}
-
 type CanNot interface {
 	Not() BoolAst
+}
+
+type BoolAst interface {
+	PrintableAst
+	CanNot
+	IsTrue(*Context) (bool, error)
 }
 
 type ANDs struct {
@@ -109,10 +110,19 @@ type call[T TArg] struct {
 	not  bool
 }
 
-func newCall[T TArg](fnMap map[string]func(any, T) (any, error), name string, arg T) (*call[T], error) {
+func newCall[T TArg](
+	fnMap map[string]func(any, T) (any, error),
+	defaultFn func(string, any, T) (any, error),
+	name string, arg T) (*call[T], error) {
 	fn, has := fnMap[name]
 	if !has {
-		return nil, ErrNoSuchMethod
+		if defaultFn != nil {
+			fn = func(env any, arg T) (any, error) {
+				return defaultFn(name, env, arg)
+			}
+		} else {
+			return nil, ErrNoSuchMethod
+		}
 	}
 	return &call[T]{
 		name: name,
