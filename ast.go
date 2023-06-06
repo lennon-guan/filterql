@@ -386,7 +386,7 @@ type callThenIn[T1, T2 TArg] struct {
 	not     bool
 }
 
-func newCallThenIn[T TArg](ci Call, choices []T) BoolAst {
+func newCallThenIn[T TArg](ci Call, choices []T, not bool) BoolAst {
 	switch c := ci.(type) {
 	case *call[int]:
 		return &callThenIn[int, T]{
@@ -394,6 +394,7 @@ func newCallThenIn[T TArg](ci Call, choices []T) BoolAst {
 			arg:     c.arg,
 			fn:      c.fn,
 			choices: choices,
+			not:     not,
 		}
 	case *call[string]:
 		return &callThenIn[string, T]{

@@ -129,6 +129,7 @@ func parseAtom(ts *TokenStream, cfg *ParseConfig) (BoolAst, error) {
 		return nil, err
 	}
 	op := ts.Current.Type
+	not := false
 	switch op {
 	case TOKEN_OP_EQ, TOKEN_OP_NE, TOKEN_OP_GT, TOKEN_OP_GE, TOKEN_OP_LT, TOKEN_OP_LE:
 		if typ, err := nextMustBe(ts, TOKEN_STR, TOKEN_INT, TOKEN_ID); err != nil {
@@ -147,6 +148,12 @@ func parseAtom(ts *TokenStream, cfg *ParseConfig) (BoolAst, error) {
 			}
 		}
 		return nil, parseError(ErrUnexpectedToken, ts.index)
+	case TOKEN_NOT:
+		if _, err := nextMustBe(ts, TOKEN_OP_IN); err != nil {
+			return nil, err
+		}
+		not = true
+		fallthrough
 	case TOKEN_OP_IN:
 		if typ, err := nextMustBe(ts, TOKEN_LEFT_BRACKET, TOKEN_ID); err != nil {
 			return nil, err
@@ -154,7 +161,7 @@ func parseAtom(ts *TokenStream, cfg *ParseConfig) (BoolAst, error) {
 			if call2, err := parseCall(ts, cfg); err != nil {
 				return nil, err
 			} else {
-				return &InWithCall{Left: call, Right: call2}, nil
+				return &InWithCall{Left: call, Right: call2, NotIn: not}, nil
 			}
 		}
 		choiceType, err := nextMustBe(ts, TOKEN_INT, TOKEN_STR)
@@ -179,22 +186,30 @@ func parseAtom(ts *TokenStream, cfg *ParseConfig) (BoolAst, error) {
 		switch choiceType {
 		case TOKEN_INT:
 			if len(choices) == 1 {
-				return newCallThenCompare(call, TOKEN_OP_EQ, tokenToInt(choices[0])), nil
+				if not {
+					return newCallThenCompare(call, TOKEN_OP_NE, tokenToInt(choices[0])), nil
+				} else {
+					return newCallThenCompare(call, TOKEN_OP_EQ, tokenToInt(choices[0])), nil
+				}
 			}
 			in := &In[int]{Call: call, Choices: make([]int, len(choices))}
 			for i, choice := range choices {
 				in.Choices[i] = tokenToInt(choice)
 			}
-			return newCallThenIn(in.Call, in.Choices), nil
+			return newCallThenIn(in.Call, in.Choices, not), nil
 		case TOKEN_STR:
 			if len(choices) == 1 {
-				return newCallThenCompare(call, TOKEN_OP_EQ, tokenToStr(choices[0])), nil
+				if not {
+					return newCallThenCompare(call, TOKEN_OP_NE, tokenToStr(choices[0])), nil
+				} else {
+					return newCallThenCompare(call, TOKEN_OP_EQ, tokenToStr(choices[0])), nil
+				}
 			}
 			in := &In[string]{Call: call, Choices: make([]string, len(choices))}
 			for i, choice := range choices {
 				in.Choices[i] = tokenToStr(choice)
 			}
-			return newCallThenIn(in.Call, in.Choices), nil
+			return newCallThenIn(in.Call, in.Choices, not), nil
 		default:
 			panic("invalid choice type")
 		}
