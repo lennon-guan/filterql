@@ -28,6 +28,8 @@ func Parse(code string, cfg *ParseConfig) (BoolAst, error) {
 	ts.Next()
 	if cond, err := parseCondition(ts, cfg); err != nil {
 		return nil, err
+	} else if ts.Current.Type != TOKEN_EOF {
+		return nil, ErrUnexpectedToken
 	} else {
 		if cacher := cfg.Cache; cacher != nil {
 			cacher.Store(code, cond)
